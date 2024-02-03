@@ -56,16 +56,61 @@ def FH_CLQR(tf: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
 
     A = build_A(nt)
     B = build_B()
-    time_range = np.flip(np.arange(0, 16200))
+    time_range = np.arange(0, 16200)
+    time_range_flip = np.flip(np.arange(0, 16200))
     P_0 = np.zeros((6, 6))
-    P_dot = - P * A - A.T @ P + P @ B @ la.inv(R) @ B.T @ P - Q
+    K_list = []
+    x_hist = np.atleast_2d(np.array([0, 0, 0, 0, 0, 0]))
+    u_hist = np.atleast_2d(np.array([0, 0, 0]))
 
-    sp.integrate.ode()
+    def riccati(t: int, P: np.array):
 
-    return 1
+        P = P.reshape(6, 6)
+        return (- P @ A - A.T @ P + P @ B @ la.inv(R) @ B.T @ P - Q).flatten()
+
+    ric_sol = sp.integrate.solve_ivp(riccati, [16200, 0], P_0.flatten(), rtol = 1e-5, t_eval = time_range_flip)
+    P_sol = ric_sol.y.T
+    for P in P_sol:
+        P = P.reshape(6, 6)
+        K_list.append(la.inv(R) @ B.T @ P)
+
+    def cl_st_dyn(t: int, x: np.array):
+            t = int(t)
+            return ((A - B @ K_list[t - 1]) @ x).flatten()
+
+    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 16200], x_0.flatten(), rtol = 1e-5, t_eval = time_range)
+    x_sol = state_sol.y.T
+
+    for K, x in zip(K_list, x_sol):
+        x_hist = np.vstack((x_hist, x))
+        u_hist = np.vstack((u_hist, - K @ x.T))
+
+    return x_hist, u_hist
+
+def IH_CLQR(nt: float, Q: np.array, R: np.array, x_0: np.array):
+
+    A = build_A(nt)
+    B = build_B()
+    x_hist = np.atleast_2d(np.array([0, 0, 0, 0, 0, 0]))
+    u_hist = np.atleast_2d(np.array([0, 0, 0]))
+
+    P = la.solve_continuous_are(A, B, Q, R)
+    K = la.inv(R) @ B.T @ P
+
+    def cl_st_dyn(t: int, x: np.array):
+            t = int(t)
+            return ((A - B @ K) @ x).flatten()
+
+    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 16200], x_0.flatten(), rtol = 1e-5)
+    x_sol = state_sol.y.T
+
+    for x in x_sol:
+        x_hist = np.vstack((x_hist, x))
+        u_hist = np.vstack((u_hist, - K @ x.T))
+
+    return x_hist, u_hist
 
 def FH_DLQR(N: int, dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
-
     x_old = x_0
     P_list = []
     x_hist = x_0.T
@@ -103,11 +148,11 @@ def IH_DLQR(dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
     F = build_F(nt, dt)
     G = build_G(nt, dt)
     P = la.solve_discrete_are(F, G, Q, R)
+    K = la.inv(G.T @ P @ G + R) @ G.T @ P @ F
     x_old = x_0
 
     while la.norm(x_old) > 1e-5:
 
-        K = la.inv(G.T @ P @ G + R) @ G.T @ P @ F
         x = (F - G @ la.inv(G.T @ P @ G + R) @ (G.T @ P @ F)) @ x_old
         u = -K @ x_old
         x_hist = np.vstack((x_hist, x.T))
@@ -134,8 +179,8 @@ def main():
 
     Q = np.eye(6)
     R = np.eye(3)
-    x, u = FH_CLQR(16200, nt, Q, R, x_0)
-    # x, u = IH_CLQR(16200, nt, Q, R, x_0)
+    # x, u = FH_CLQR(16200, nt, Q, R, x_0)
+    x, u = IH_CLQR(nt, Q, R, x_0)
     # x, u = FH_DLQR(1500, 1, nt, Q, R, x_0)
     # x, u = IH_DLQR(1, nt, Q, R, x_0)
 
