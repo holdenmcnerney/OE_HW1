@@ -101,7 +101,7 @@ def IH_CLQR(nt: float, Q: np.array, R: np.array, x_0: np.array):
             t = int(t)
             return ((A - B @ K) @ x).flatten()
 
-    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 16200], x_0.flatten(), rtol = 1e-5)
+    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 1e5], x_0.flatten(), rtol = 1e-5)
     x_sol = state_sol.y.T
 
     for x in x_sol:
@@ -177,16 +177,54 @@ def main():
     control_mat = np.block([B, A @ B, A**2 @ B, A**3 @ B, A**4 @ B, A**5 @ B])
     # print(np.linalg.matrix_rank(control_mat))
 
-    Q = np.eye(6)
-    R = np.eye(3)
-    # x, u = FH_CLQR(16200, nt, Q, R, x_0)
-    x, u = IH_CLQR(nt, Q, R, x_0)
-    # x, u = FH_DLQR(1500, 1, nt, Q, R, x_0)
-    # x, u = IH_DLQR(1, nt, Q, R, x_0)
+    input_dict = {'Case1':[np.eye(6), np.eye(3)],
+                  'Case2':[np.eye(6), 100 * np.eye(3)],
+                  'Case3':[np.eye(6), 10000 * np.eye(3)]}
 
-    time = np.arange(0, len(x[:, 2]))
+    # Plotting finite-horizon LQR for the continuous-time LTI system
+    for key in input_dict.keys():
+        x_fc, u_fc = FH_CLQR(16200, nt, 
+                            input_dict[key][0], 
+                            input_dict[key][1], 
+                            x_0)
+        time = np.arange(0, len(x_fc[:, 2]))
+
+        fig, ax = plt.subplots(1, 3)
+        ax[0].set_title('X vs Y')
+        ax[0].set_xlabel(r'X ($m$)')
+        ax[0].set_ylabel(r'Y ($m$)')
+        ax[0].plot(x_fc[:, 0], x_fc[:, 1])
+
+        ax[1].set_title('Height vs Time')
+        ax[1].set_ylabel(r'Height ($m$)')
+        ax[1].set_xlabel(r'Time ($s$)')
+        ax[1].plot(time, x_fc[:, 2])
+        
+        ax[2].set_title('Acceleration Input vs Time')
+        ax[2].set_ylabel(r'Height ($m$)')
+        ax[2].set_xlabel(r'Time ($s$)')
+        ax[2].plot(time, u_fc[:, 0], label='u_x')
+        ax[2].plot(time, u_fc[:, 1], label='u_y')
+        ax[2].plot(time, u_fc[:, 2], label='u_z')
+
+        fig.set_size_inches(8, 6)
+        fig.savefig(f'./finite_horizon_continuous_{key}.png', dpi=200)
+        plt.close(fig)
+
+    # time = np.arange(0, len(x[:, 2]))
     # plt.plot(x[:,0], x[:, 1])
-    plt.plot(time, x[:, 2])
+    # plt.plot(time, x[:, 2])
+
+    # Plotting infinite-horizon LQR for the continuous-time LTI system
+    # x_ic, u_ic = IH_CLQR(nt, Q, R, x_0)
+
+    # Plotting finite-horizon LQR for the discrete-time LTI system
+    # x_fd, u_fd = FH_DLQR(1500, 1, nt, Q, R, x_0)
+
+    # Plotting infinite-horizon LQR for the discrete-time LTI system
+    # x_id, u_id = IH_DLQR(1, nt, Q, R, x_0)
+
+
     plt.show()
 
     return 1
