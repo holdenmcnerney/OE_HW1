@@ -52,16 +52,27 @@ def build_G(nt: float, dt: float):
 
     return G  
 
+def FH_CLQR(tf: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
+
+    A = build_A(nt)
+    B = build_B()
+    time_range = np.flip(np.arange(0, 16200))
+    P_0 = np.zeros((6, 6))
+    P_dot = - P * A - A.T @ P + P @ B @ la.inv(R) @ B.T @ P - Q
+
+    sp.integrate.ode()
+
+    return 1
+
 def FH_DLQR(N: int, dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
 
+    x_old = x_0
     P_list = []
     x_hist = x_0.T
     u_hist = np.atleast_2d(np.array([0, 0, 0]))
-
     P_old = np.zeros((6, 6))
     F = build_F(nt, dt)
     G = build_G(nt, dt)
-
     while N > 0:
 
         P = F.T @ P_old @ F + Q \
@@ -70,8 +81,6 @@ def FH_DLQR(N: int, dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array)
         P_list.append(P)
         N-=1
 
-    x_old = x_0
-
     for i, P in enumerate(P_list[::-1]):
 
         if i == 1:
@@ -79,13 +88,31 @@ def FH_DLQR(N: int, dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array)
         x = (F - G @ la.inv(G.T @ P @ G + R) @ (G.T @ P @ F)) @ x_old
         K = la.inv(G.T @ P @ G + R) @ G.T @ P @ F
         u = -K @ x_old
-
         x_hist = np.vstack((x_hist, x.T))
         u_hist = np.vstack((u_hist, u.T))
-
         x_old = x
 
     u_hist = np.delete(u_hist, 0, axis=0)
+
+    return x_hist, u_hist
+
+def IH_DLQR(dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
+
+    x_hist = x_0.T
+    u_hist = np.atleast_2d(np.array([0, 0, 0]))
+    F = build_F(nt, dt)
+    G = build_G(nt, dt)
+    P = la.solve_discrete_are(F, G, Q, R)
+    x_old = x_0
+
+    while la.norm(x_old) > 1e-5:
+
+        K = la.inv(G.T @ P @ G + R) @ G.T @ P @ F
+        x = (F - G @ la.inv(G.T @ P @ G + R) @ (G.T @ P @ F)) @ x_old
+        u = -K @ x_old
+        x_hist = np.vstack((x_hist, x.T))
+        u_hist = np.vstack((u_hist, u.T))
+        x_old = x
 
     return x_hist, u_hist
 
@@ -96,28 +123,25 @@ def main():
     rt = 6783000            # m
     
     x_0 = np.array([[1000], [1000], [1000], [0], [0], [0]])
-
     nt = np.sqrt(mu / rt**3)
     A = build_A(nt)
     B = build_B()
-
     val, vec = la.eig(A)
     # print(val)
 
     control_mat = np.block([B, A @ B, A**2 @ B, A**3 @ B, A**4 @ B, A**5 @ B])
-
     # print(np.linalg.matrix_rank(control_mat))
 
     Q = np.eye(6)
     R = np.eye(3)
+    x, u = FH_CLQR(16200, nt, Q, R, x_0)
+    # x, u = IH_CLQR(16200, nt, Q, R, x_0)
+    # x, u = FH_DLQR(1500, 1, nt, Q, R, x_0)
+    # x, u = IH_DLQR(1, nt, Q, R, x_0)
 
-    x, u = FH_DLQR(1500, 1, nt, Q, R, x_0)
-
-    time = np.arange(0, 1501)
-
+    time = np.arange(0, len(x[:, 2]))
     # plt.plot(x[:,0], x[:, 1])
     plt.plot(time, x[:, 2])
-
     plt.show()
 
     return 1
