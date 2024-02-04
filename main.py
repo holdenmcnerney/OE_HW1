@@ -166,66 +166,146 @@ def main():
     # Constants
     mu = 3.986004418e14     # m^3/s^2
     rt = 6783000            # m
-    
+    # Initial conditions
     x_0 = np.array([[1000], [1000], [1000], [0], [0], [0]])
     nt = np.sqrt(mu / rt**3)
     A = build_A(nt)
     B = build_B()
     val, vec = la.eig(A)
-    # print(val)
-
+    print(f'Eigenvalues: {val}')
     control_mat = np.block([B, A @ B, A**2 @ B, A**3 @ B, A**4 @ B, A**5 @ B])
-    # print(np.linalg.matrix_rank(control_mat))
-
+    print(f'Controllability matrix rank :{np.linalg.matrix_rank(control_mat)}')
+    print(f'Controllability matrix :{control_mat}')
     input_dict = {'Case1':[np.eye(6), np.eye(3)],
                   'Case2':[np.eye(6), 100 * np.eye(3)],
                   'Case3':[np.eye(6), 10000 * np.eye(3)]}
+    plotting = True
+    if plotting:
+        # Plotting finite-horizon LQR for the continuous-time LTI system
+        for key in input_dict.keys():
+            x_fc, u_fc = FH_CLQR(16200, nt, 
+                                input_dict[key][0], 
+                                input_dict[key][1], 
+                                x_0)
+            time = np.arange(0, len(x_fc[:, 2]))
 
-    # Plotting finite-horizon LQR for the continuous-time LTI system
-    for key in input_dict.keys():
-        x_fc, u_fc = FH_CLQR(16200, nt, 
-                            input_dict[key][0], 
-                            input_dict[key][1], 
-                            x_0)
-        time = np.arange(0, len(x_fc[:, 2]))
+            fig, ax = plt.subplots(1, 3)
+            ax[0].set_title('X vs Y')
+            ax[0].set_xlabel(r'X ($m$)')
+            ax[0].set_ylabel(r'Y ($m$)')
+            ax[0].plot(x_fc[:, 0], x_fc[:, 1])
 
-        fig, ax = plt.subplots(1, 3)
-        ax[0].set_title('X vs Y')
-        ax[0].set_xlabel(r'X ($m$)')
-        ax[0].set_ylabel(r'Y ($m$)')
-        ax[0].plot(x_fc[:, 0], x_fc[:, 1])
+            ax[1].set_title('Height vs Time')
+            ax[1].set_ylabel(r'Height ($m$)')
+            ax[1].set_xlabel(r'Time ($s$)')
+            ax[1].plot(time, x_fc[:, 2])
+            
+            ax[2].set_title('Acceleration Input vs Time')
+            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_xlabel(r'Time ($s$)')
+            ax[2].plot(time, u_fc[:, 0], label='u_x')
+            ax[2].plot(time, u_fc[:, 1], label='u_y')
+            ax[2].plot(time, u_fc[:, 2], label='u_z')
+            ax[2].legend()
 
-        ax[1].set_title('Height vs Time')
-        ax[1].set_ylabel(r'Height ($m$)')
-        ax[1].set_xlabel(r'Time ($s$)')
-        ax[1].plot(time, x_fc[:, 2])
-        
-        ax[2].set_title('Acceleration Input vs Time')
-        ax[2].set_ylabel(r'Height ($m$)')
-        ax[2].set_xlabel(r'Time ($s$)')
-        ax[2].plot(time, u_fc[:, 0], label='u_x')
-        ax[2].plot(time, u_fc[:, 1], label='u_y')
-        ax[2].plot(time, u_fc[:, 2], label='u_z')
+            fig.set_size_inches(16, 4)
+            fig.savefig(f'./continuous_finite_horizon_{key}.png', dpi=400)
+            plt.close(fig)
 
-        fig.set_size_inches(8, 6)
-        fig.savefig(f'./finite_horizon_continuous_{key}.png', dpi=200)
-        plt.close(fig)
+        # Plotting infinite-horizon LQR for the continuous-time LTI system
+        for key in input_dict.keys():
+            x_ic, u_ic = IH_CLQR(nt, 
+                                input_dict[key][0], 
+                                input_dict[key][1], 
+                                x_0)
+            time = np.arange(0, len(x_ic[:, 2]))
 
-    # time = np.arange(0, len(x[:, 2]))
-    # plt.plot(x[:,0], x[:, 1])
-    # plt.plot(time, x[:, 2])
+            fig, ax = plt.subplots(1, 3)
+            ax[0].set_title('X vs Y')
+            ax[0].set_xlabel(r'X ($m$)')
+            ax[0].set_ylabel(r'Y ($m$)')
+            ax[0].plot(x_ic[:, 0], x_ic[:, 1])
 
-    # Plotting infinite-horizon LQR for the continuous-time LTI system
-    # x_ic, u_ic = IH_CLQR(nt, Q, R, x_0)
+            ax[1].set_title('Height vs Time')
+            ax[1].set_ylabel(r'Height ($m$)')
+            ax[1].set_xlabel(r'Time ($s$)')
+            ax[1].plot(time, x_ic[:, 2])
+            
+            ax[2].set_title('Acceleration Input vs Time')
+            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_xlabel(r'Time ($s$)')
+            ax[2].plot(time, u_ic[:, 0], label='u_x')
+            ax[2].plot(time, u_ic[:, 1], label='u_y')
+            ax[2].plot(time, u_ic[:, 2], label='u_z')
+            ax[2].legend()
 
-    # Plotting finite-horizon LQR for the discrete-time LTI system
-    # x_fd, u_fd = FH_DLQR(1500, 1, nt, Q, R, x_0)
+            fig.set_size_inches(16, 4)
+            fig.savefig(f'./continuous_infinite_horizon_{key}.png', dpi=400)
+            plt.close(fig)
 
-    # Plotting infinite-horizon LQR for the discrete-time LTI system
-    # x_id, u_id = IH_DLQR(1, nt, Q, R, x_0)
+        # Plotting finite-horizon LQR for the discrete-time LTI system
+        for key in input_dict.keys():
+            x_fd, u_fd = FH_DLQR(1500, 1, nt, 
+                                input_dict[key][0], 
+                                input_dict[key][1], 
+                                x_0)
+            time_x = np.arange(0, len(x_fd[:, 2]))
+            time_u = np.arange(0, len(u_fd[:, 0]))
 
+            fig, ax = plt.subplots(1, 3)
+            ax[0].set_title('X vs Y')
+            ax[0].set_xlabel(r'X ($m$)')
+            ax[0].set_ylabel(r'Y ($m$)')
+            ax[0].plot(x_fd[:, 0], x_fd[:, 1])
 
-    plt.show()
+            ax[1].set_title('Height vs Time')
+            ax[1].set_ylabel(r'Height ($m$)')
+            ax[1].set_xlabel(r'Time ($s$)')
+            ax[1].plot(time_x, x_fd[:, 2])
+            
+            ax[2].set_title('Acceleration Input vs Time')
+            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_xlabel(r'Time ($s$)')
+            ax[2].plot(time_u, u_fd[:, 0], label='u_x')
+            ax[2].plot(time_u, u_fd[:, 1], label='u_y')
+            ax[2].plot(time_u, u_fd[:, 2], label='u_z')
+            ax[2].legend()
+
+            fig.set_size_inches(16, 4)
+            fig.savefig(f'./discrete_finite_horizon_{key}.png', dpi=400)
+            plt.close(fig)
+
+        # Plotting infinite-horizon LQR for the discrete-time LTI system
+        for key in input_dict.keys():
+            x_id, u_id = IH_DLQR(1, nt, 
+                                input_dict[key][0], 
+                                input_dict[key][1], 
+                                x_0)
+            time_x = np.arange(0, len(x_id[:, 2]))
+            time_u = np.arange(0, len(u_id[:, 0]))
+
+            fig, ax = plt.subplots(1, 3)
+            ax[0].set_title('X vs Y')
+            ax[0].set_xlabel(r'X ($m$)')
+            ax[0].set_ylabel(r'Y ($m$)')
+            ax[0].plot(x_id[:, 0], x_id[:, 1])
+
+            ax[1].set_title('Height vs Time')
+            ax[1].set_ylabel(r'Height ($m$)')
+            ax[1].set_xlabel(r'Time ($s$)')
+            ax[1].plot(time_x, x_id[:, 2])
+            
+            ax[2].set_title('Acceleration Input vs Time')
+            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_xlabel(r'Time ($s$)')
+            ax[2].plot(time_u, u_id[:, 0], label='u_x')
+            ax[2].plot(time_u, u_id[:, 1], label='u_y')
+            ax[2].plot(time_u, u_id[:, 2], label='u_z')
+            ax[2].legend()
+
+            fig.set_size_inches(16, 4)
+            fig.savefig(f'./discrete_infinite_horizon_{key}.png', dpi=400)
+            plt.close(fig)
 
     return 1
 
