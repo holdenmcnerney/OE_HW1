@@ -43,6 +43,12 @@ def build_F(nt: float, dt: float):
 def build_G(nt: float, dt: float):
 
     ntdt = nt * dt
+    # G = np.array([[nt**-2 * (1 - cos(ntdt)), 2 * nt**-2 * (ntdt - sin(ntdt)), 0], 
+    #               [-2 * nt**-2 * (ntdt - sin(ntdt)), 4 * nt**-2 * (1 - cos(ntdt)) - 3 / 2 * dt**2, 0], 
+    #               [0, 0, nt**-2 * (1 - cos(ntdt))], 
+    #               [nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
+    #               [-2 * nt**-1 * (1- cos(ntdt)), 4 * nt**-2 * sin(ntdt) - 3 * dt, 0], 
+    #               [0, 0, nt**-1 * sin(ntdt)]])
     G = np.array([[nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
                   [-2 * nt**-1 * (1 - cos(ntdt)), nt**-1 * (4 * sin(ntdt) - 3 * ntdt), 0], 
                   [0, 0, nt**-1 * sin(ntdt)], 
@@ -56,8 +62,8 @@ def FH_CLQR(tf: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
 
     A = build_A(nt)
     B = build_B()
-    time_range = np.arange(0, 16200)
-    time_range_flip = np.flip(np.arange(0, 16200))
+    time_range = np.arange(0, tf)
+    time_range_flip = np.flip(np.arange(0, tf))
     P_0 = np.zeros((6, 6))
     K_list = []
     x_hist = np.atleast_2d(np.array([0, 0, 0, 0, 0, 0]))
@@ -68,7 +74,7 @@ def FH_CLQR(tf: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
         P = P.reshape(6, 6)
         return (- P @ A - A.T @ P + P @ B @ la.inv(R) @ B.T @ P - Q).flatten()
 
-    ric_sol = sp.integrate.solve_ivp(riccati, [16200, 0], P_0.flatten(), rtol = 1e-5, t_eval = time_range_flip)
+    ric_sol = sp.integrate.solve_ivp(riccati, [tf, 0], P_0.flatten(), rtol = 1e-3, t_eval = time_range_flip)
     P_sol = ric_sol.y.T
     for P in P_sol:
         P = P.reshape(6, 6)
@@ -78,12 +84,15 @@ def FH_CLQR(tf: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
             t = int(t)
             return ((A - B @ K_list[t - 1]) @ x).flatten()
 
-    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 16200], x_0.flatten(), rtol = 1e-5, t_eval = time_range)
+    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, tf], x_0.flatten(), rtol = 1e-3, t_eval = time_range)
     x_sol = state_sol.y.T
 
     for K, x in zip(K_list, x_sol):
         x_hist = np.vstack((x_hist, x))
         u_hist = np.vstack((u_hist, - K @ x.T))
+
+    x_hist = np.delete(x_hist, 0, axis=0)
+    u_hist = np.delete(u_hist, 0, axis=0)
 
     return x_hist, u_hist
 
@@ -101,12 +110,15 @@ def IH_CLQR(nt: float, Q: np.array, R: np.array, x_0: np.array):
             t = int(t)
             return ((A - B @ K) @ x).flatten()
 
-    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 1e5], x_0.flatten(), rtol = 1e-5)
+    state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 1e5], x_0.flatten(), rtol = 1e-2)
     x_sol = state_sol.y.T
 
     for x in x_sol:
         x_hist = np.vstack((x_hist, x))
         u_hist = np.vstack((u_hist, - K @ x.T))
+
+    x_hist = np.delete(x_hist, 0, axis=0)
+    u_hist = np.delete(u_hist, 0, axis=0)
 
     return x_hist, u_hist
 
@@ -176,14 +188,14 @@ def main():
     control_mat = np.block([B, A @ B, A**2 @ B, A**3 @ B, A**4 @ B, A**5 @ B])
     print(f'Controllability matrix rank :{np.linalg.matrix_rank(control_mat)}')
     print(f'Controllability matrix :{control_mat}')
-    input_dict = {'Case1':[np.eye(6), np.eye(3)],
-                  'Case2':[np.eye(6), 100 * np.eye(3)],
-                  'Case3':[np.eye(6), 10000 * np.eye(3)]}
+    input_dict = {'Case1':[np.eye(6), np.eye(3) * 1e3],
+                  'Case2':[np.eye(6), 100 * np.eye(3) * 1e3],
+                  'Case3':[np.eye(6), 10000 * np.eye(3) * 1e3]}
     plotting = True
     if plotting:
         # Plotting finite-horizon LQR for the continuous-time LTI system
         for key in input_dict.keys():
-            x_fc, u_fc = FH_CLQR(16200, nt, 
+            x_fc, u_fc = FH_CLQR(400, nt, 
                                 input_dict[key][0], 
                                 input_dict[key][1], 
                                 x_0)
@@ -201,7 +213,7 @@ def main():
             ax[1].plot(time, x_fc[:, 2])
             
             ax[2].set_title('Acceleration Input vs Time')
-            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
             ax[2].plot(time, u_fc[:, 0], label='u_x')
             ax[2].plot(time, u_fc[:, 1], label='u_y')
@@ -232,7 +244,7 @@ def main():
             ax[1].plot(time, x_ic[:, 2])
             
             ax[2].set_title('Acceleration Input vs Time')
-            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
             ax[2].plot(time, u_ic[:, 0], label='u_x')
             ax[2].plot(time, u_ic[:, 1], label='u_y')
@@ -245,7 +257,7 @@ def main():
 
         # Plotting finite-horizon LQR for the discrete-time LTI system
         for key in input_dict.keys():
-            x_fd, u_fd = FH_DLQR(1500, 1, nt, 
+            x_fd, u_fd = FH_DLQR(400, 1, nt, 
                                 input_dict[key][0], 
                                 input_dict[key][1], 
                                 x_0)
@@ -264,7 +276,7 @@ def main():
             ax[1].plot(time_x, x_fd[:, 2])
             
             ax[2].set_title('Acceleration Input vs Time')
-            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
             ax[2].plot(time_u, u_fd[:, 0], label='u_x')
             ax[2].plot(time_u, u_fd[:, 1], label='u_y')
@@ -296,7 +308,7 @@ def main():
             ax[1].plot(time_x, x_id[:, 2])
             
             ax[2].set_title('Acceleration Input vs Time')
-            ax[2].set_ylabel(r'Height ($m$)')
+            ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
             ax[2].plot(time_u, u_id[:, 0], label='u_x')
             ax[2].plot(time_u, u_id[:, 1], label='u_y')
