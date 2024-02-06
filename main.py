@@ -43,18 +43,18 @@ def build_F(nt: float, dt: float):
 def build_G(nt: float, dt: float):
 
     ntdt = nt * dt
-    # G = np.array([[nt**-2 * (1 - cos(ntdt)), 2 * nt**-2 * (ntdt - sin(ntdt)), 0], 
-    #               [-2 * nt**-2 * (ntdt - sin(ntdt)), 4 * nt**-2 * (1 - cos(ntdt)) - 3 / 2 * dt**2, 0], 
-    #               [0, 0, nt**-2 * (1 - cos(ntdt))], 
-    #               [nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
-    #               [-2 * nt**-1 * (1- cos(ntdt)), 4 * nt**-2 * sin(ntdt) - 3 * dt, 0], 
-    #               [0, 0, nt**-1 * sin(ntdt)]])
-    G = np.array([[nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
-                  [-2 * nt**-1 * (1 - cos(ntdt)), nt**-1 * (4 * sin(ntdt) - 3 * ntdt), 0], 
-                  [0, 0, nt**-1 * sin(ntdt)], 
-                  [cos(ntdt), 2 * sin(ntdt), 0], 
-                  [-2 * sin(ntdt), 4 * cos(ntdt) - 3, 0], 
-                  [0, 0, cos(ntdt)]])
+    G = np.array([[nt**-2 * (1 - cos(ntdt)), 2 * nt**-2 * (ntdt - sin(ntdt)), 0], 
+                  [-2 * nt**-2 * (ntdt - sin(ntdt)), 4 * nt**-2 * (1 - cos(ntdt)) - 3 / 2 * dt**2, 0], 
+                  [0, 0, nt**-2 * (1 - cos(ntdt))], 
+                  [nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
+                  [-2 * nt**-1 * (1- cos(ntdt)), 4 * nt**-1 * sin(ntdt) - 3 * dt, 0], 
+                  [0, 0, nt**-1 * sin(ntdt)]])
+    # G = np.array([[nt**-1 * sin(ntdt), 2 * nt**-1 * (1 - cos(ntdt)), 0], 
+    #               [-2 * nt**-1 * (1 - cos(ntdt)), nt**-1 * (4 * sin(ntdt) - 3 * ntdt), 0], 
+    #               [0, 0, nt**-1 * sin(ntdt)], 
+    #               [cos(ntdt), 2 * sin(ntdt), 0], 
+    #               [-2 * sin(ntdt), 4 * cos(ntdt) - 3, 0], 
+    #               [0, 0, cos(ntdt)]])
 
     return G  
 
@@ -112,6 +112,7 @@ def IH_CLQR(nt: float, Q: np.array, R: np.array, x_0: np.array):
 
     state_sol = sp.integrate.solve_ivp(cl_st_dyn, [0, 1e5], x_0.flatten(), rtol = 1e-2)
     x_sol = state_sol.y.T
+    t = state_sol.t
 
     for x in x_sol:
         x_hist = np.vstack((x_hist, x))
@@ -120,7 +121,7 @@ def IH_CLQR(nt: float, Q: np.array, R: np.array, x_0: np.array):
     x_hist = np.delete(x_hist, 0, axis=0)
     u_hist = np.delete(u_hist, 0, axis=0)
 
-    return x_hist, u_hist
+    return x_hist, u_hist, t
 
 def FH_DLQR(N: int, dt: int, nt: float, Q: np.array, R: np.array, x_0: np.array):
     x_old = x_0
@@ -186,22 +187,23 @@ def main():
     val, vec = la.eig(A)
     print(f'Eigenvalues: {val}')
     control_mat = np.block([B, A @ B, A**2 @ B, A**3 @ B, A**4 @ B, A**5 @ B])
-    print(f'Controllability matrix rank :{np.linalg.matrix_rank(control_mat)}')
-    print(f'Controllability matrix :{control_mat}')
-    input_dict = {'Case1':[np.eye(6), np.eye(3) * 1e3],
-                  'Case2':[np.eye(6), 100 * np.eye(3) * 1e3],
-                  'Case3':[np.eye(6), 10000 * np.eye(3) * 1e3]}
+    print(f'Controllability matrix rank: {np.linalg.matrix_rank(control_mat)}')
+    print(f'Controllability matrix: {control_mat}')
+    input_dict = {'Case_1':[np.eye(6), np.eye(3) * 1e3],
+                  'Case_2':[np.eye(6), 100 * np.eye(3) * 1e3],
+                  'Case_3':[np.eye(6), 10000 * np.eye(3) * 1e3]}
     plotting = True
     if plotting:
         # Plotting finite-horizon LQR for the continuous-time LTI system
         for key in input_dict.keys():
-            x_fc, u_fc = FH_CLQR(400, nt, 
+            x_fc, u_fc = FH_CLQR(800, nt, 
                                 input_dict[key][0], 
                                 input_dict[key][1], 
                                 x_0)
             time = np.arange(0, len(x_fc[:, 2]))
 
             fig, ax = plt.subplots(1, 3)
+            fig.suptitle(f'''Finite Horizon LQR - Continuous - {key}''')
             ax[0].set_title('X vs Y')
             ax[0].set_xlabel(r'X ($m$)')
             ax[0].set_ylabel(r'Y ($m$)')
@@ -215,24 +217,25 @@ def main():
             ax[2].set_title('Acceleration Input vs Time')
             ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
-            ax[2].plot(time, u_fc[:, 0], label='u_x')
-            ax[2].plot(time, u_fc[:, 1], label='u_y')
-            ax[2].plot(time, u_fc[:, 2], label='u_z')
+            ax[2].plot(time, u_fc[:, 0], '--', label='u_x')
+            ax[2].plot(time, u_fc[:, 1], '--', label='u_y')
+            ax[2].plot(time, u_fc[:, 2], '--', label='u_z')
             ax[2].legend()
 
             fig.set_size_inches(16, 4)
-            fig.savefig(f'./continuous_finite_horizon_{key}.png', dpi=400)
+            fig.savefig(f'continuous_finite_horizon_{key}.png', dpi=400)
             plt.close(fig)
 
         # Plotting infinite-horizon LQR for the continuous-time LTI system
         for key in input_dict.keys():
-            x_ic, u_ic = IH_CLQR(nt, 
+            x_ic, u_ic, t_ic = IH_CLQR(nt, 
                                 input_dict[key][0], 
                                 input_dict[key][1], 
                                 x_0)
             time = np.arange(0, len(x_ic[:, 2]))
 
             fig, ax = plt.subplots(1, 3)
+            fig.suptitle(f'''Infinite Horizon LQR - Continuous - {key}''')
             ax[0].set_title('X vs Y')
             ax[0].set_xlabel(r'X ($m$)')
             ax[0].set_ylabel(r'Y ($m$)')
@@ -241,23 +244,25 @@ def main():
             ax[1].set_title('Height vs Time')
             ax[1].set_ylabel(r'Height ($m$)')
             ax[1].set_xlabel(r'Time ($s$)')
-            ax[1].plot(time, x_ic[:, 2])
+            ax[1].set_xlim(-25, 825)
+            ax[1].plot(t_ic, x_ic[:, 2])
             
             ax[2].set_title('Acceleration Input vs Time')
             ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
-            ax[2].plot(time, u_ic[:, 0], label='u_x')
-            ax[2].plot(time, u_ic[:, 1], label='u_y')
-            ax[2].plot(time, u_ic[:, 2], label='u_z')
+            ax[2].set_xlim(-25, 825)
+            ax[2].plot(t_ic, u_ic[:, 0], '--', label='u_x')
+            ax[2].plot(t_ic, u_ic[:, 1], '--', label='u_y')
+            ax[2].plot(t_ic, u_ic[:, 2], '--', label='u_z')
             ax[2].legend()
 
             fig.set_size_inches(16, 4)
-            fig.savefig(f'./continuous_infinite_horizon_{key}.png', dpi=400)
+            fig.savefig(f'continuous_infinite_horizon_{key}.png', dpi=400)
             plt.close(fig)
 
         # Plotting finite-horizon LQR for the discrete-time LTI system
         for key in input_dict.keys():
-            x_fd, u_fd = FH_DLQR(400, 1, nt, 
+            x_fd, u_fd = FH_DLQR(800, 1, nt, 
                                 input_dict[key][0], 
                                 input_dict[key][1], 
                                 x_0)
@@ -265,6 +270,7 @@ def main():
             time_u = np.arange(0, len(u_fd[:, 0]))
 
             fig, ax = plt.subplots(1, 3)
+            fig.suptitle(f'''Finite Horizon LQR - Discrete - {key}''')
             ax[0].set_title('X vs Y')
             ax[0].set_xlabel(r'X ($m$)')
             ax[0].set_ylabel(r'Y ($m$)')
@@ -278,13 +284,13 @@ def main():
             ax[2].set_title('Acceleration Input vs Time')
             ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
-            ax[2].plot(time_u, u_fd[:, 0], label='u_x')
-            ax[2].plot(time_u, u_fd[:, 1], label='u_y')
-            ax[2].plot(time_u, u_fd[:, 2], label='u_z')
+            ax[2].plot(time_u, u_fd[:, 0], '--', label='u_x')
+            ax[2].plot(time_u, u_fd[:, 1], '--', label='u_y')
+            ax[2].plot(time_u, u_fd[:, 2], '--', label='u_z')
             ax[2].legend()
 
             fig.set_size_inches(16, 4)
-            fig.savefig(f'./discrete_finite_horizon_{key}.png', dpi=400)
+            fig.savefig(f'discrete_finite_horizon_{key}.png', dpi=400)
             plt.close(fig)
 
         # Plotting infinite-horizon LQR for the discrete-time LTI system
@@ -297,6 +303,7 @@ def main():
             time_u = np.arange(0, len(u_id[:, 0]))
 
             fig, ax = plt.subplots(1, 3)
+            fig.suptitle(f'''Infinite Horizon LQR - Discrete - {key}''')
             ax[0].set_title('X vs Y')
             ax[0].set_xlabel(r'X ($m$)')
             ax[0].set_ylabel(r'Y ($m$)')
@@ -310,13 +317,13 @@ def main():
             ax[2].set_title('Acceleration Input vs Time')
             ax[2].set_ylabel(r'Acceleartion ($m/s^2$)')
             ax[2].set_xlabel(r'Time ($s$)')
-            ax[2].plot(time_u, u_id[:, 0], label='u_x')
-            ax[2].plot(time_u, u_id[:, 1], label='u_y')
-            ax[2].plot(time_u, u_id[:, 2], label='u_z')
+            ax[2].plot(time_u, u_id[:, 0], '--', label='u_x')
+            ax[2].plot(time_u, u_id[:, 1], '--', label='u_y')
+            ax[2].plot(time_u, u_id[:, 2], '--', label='u_z')
             ax[2].legend()
 
             fig.set_size_inches(16, 4)
-            fig.savefig(f'./discrete_infinite_horizon_{key}.png', dpi=400)
+            fig.savefig(f'discrete_infinite_horizon_{key}.png', dpi=400)
             plt.close(fig)
 
     return 1
